@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 商品期货ETF套利监测系统 (Web版)
-基于 Streamlit，复用桌面版核心数据获取与计算逻辑
 """
 
 import json
@@ -64,44 +63,10 @@ COMMODITY_DB = {
 
 CONFIG_FILE = Path(__file__).parent / "web_config.json"
 
-# ==========================================
-# 默认配置
-# ==========================================
 DEFAULT_CONFIG = {
-    'baskets': [
-        {
-            'name': '有色套利',
-            'etf_code': 'sz159980',
-            'etf_name': '有色金属ETF',
-            'fund_code': '159980',
-            'etf_nav': 0,
-            'contracts': [
-                {'code': 'AL', 'month': '2605', 'qty': 2, 'unit': 5},
-                {'code': 'CU', 'month': '2605', 'qty': 2, 'unit': 5},
-                {'code': 'NI', 'month': '2605', 'qty': 1, 'unit': 1},
-                {'code': 'PB', 'month': '2605', 'qty': 1, 'unit': 5},
-                {'code': 'SN', 'month': '2605', 'qty': 1, 'unit': 1},
-                {'code': 'ZN', 'month': '2605', 'qty': 1, 'unit': 5},
-            ],
-            'alerts': [],
-        },
-        {
-            'name': '化工套利',
-            'etf_code': 'sz159981',
-            'etf_name': '化工ETF',
-            'fund_code': '159981',
-            'etf_nav': 0,
-            'contracts': [
-                {'code': 'TA', 'month': '2605', 'qty': 26, 'unit': 5},
-                {'code': 'MA', 'month': '2605', 'qty': 22, 'unit': 10},
-                {'code': 'FG', 'month': '2605', 'qty': 6,  'unit': 20},
-            ],
-            'alerts': [],
-        },
-    ],
+    'baskets': [],
     'refresh_interval': 10,
 }
-
 
 # ==========================================
 # 配置持久化
@@ -114,7 +79,6 @@ def load_config():
             pass
     return json.loads(json.dumps(DEFAULT_CONFIG))
 
-
 def save_config(cfg):
     try:
         CONFIG_FILE.write_text(
@@ -122,9 +86,8 @@ def save_config(cfg):
     except Exception as e:
         st.error(f"配置保存失败: {e}")
 
-
 # ==========================================
-# 数据获取层（与桌面版一致）
+# 数据获取层
 # ==========================================
 @st.cache_resource
 def get_sessions():
@@ -139,10 +102,8 @@ def get_sessions():
     })
     return sina, tencent
 
-
 def sina_futures_code(commodity_code, month):
     return f"nf_{commodity_code}{month}"
-
 
 def fetch_sina(baskets):
     sina, _ = get_sessions()
@@ -163,7 +124,6 @@ def fetch_sina(baskets):
         if m:
             raw_map[m.group(1)] = m.group(2)
     return raw_map
-
 
 def fetch_iopv_tencent(etf_codes):
     _, tencent = get_sessions()
@@ -197,7 +157,6 @@ def fetch_iopv_tencent(etf_codes):
             result[fund_code] = {'iopv': iopv, 'nav': nav}
     return result
 
-
 def parse_futures(raw):
     if not raw:
         return None
@@ -212,7 +171,6 @@ def parse_futures(raw):
     return {'name': f[0], 'open': sf(2), 'high': sf(3), 'low': sf(4),
             'last': sf(8), 'settle': sf(9), 'prev_settle': sf(10), 'volume': sf(14)}
 
-
 def parse_etf(raw):
     if not raw:
         return None
@@ -224,7 +182,6 @@ def parse_etf(raw):
                 'prev_close': float(f[2]) if f[2] else 0}
     except (ValueError, IndexError):
         return None
-
 
 def parse_fund_nav(raw):
     if not raw:
@@ -238,9 +195,8 @@ def parse_fund_nav(raw):
     except (ValueError, IndexError):
         return None
 
-
 # ==========================================
-# 计算引擎（与桌面版一致）
+# 计算引擎
 # ==========================================
 def calculate_premium(contracts, etf_price, etf_nav):
     total_value = 0
@@ -268,7 +224,6 @@ def calculate_premium(contracts, etf_price, etf_nav):
         'contracts': contracts,
     }
 
-
 # ==========================================
 # 获取全部数据并计算
 # ==========================================
@@ -293,9 +248,11 @@ def fetch_all_data(baskets):
             etf_data = parse_etf(raw_map.get(basket['etf_code'], ''))
             nav_data = parse_fund_nav(raw_map.get(f"f_{basket['fund_code']}", ''))
             nav = basket.get('etf_nav', 0)
+            
+            # 这里的更新只会保存在内存中，不会触发文件写入死循环
             if nav <= 0 and nav_data and nav_data['nav'] > 0:
                 nav = nav_data['nav']
-                basket['etf_nav'] = nav
+                basket['etf_nav'] = nav 
 
             calc_contracts = []
             for c in basket['contracts']:
@@ -325,12 +282,10 @@ def fetch_all_data(baskets):
             errors.append(f"{basket.get('name', idx)}: {e}")
     return results, '; '.join(errors)
 
-
 # ==========================================
 # 提醒检测
 # ==========================================
 METRIC_NAMES = {'futures_premium': '期货估算溢价率', 'iopv_premium': 'IOPV溢价率'}
-
 
 def check_alerts(basket, futures_prem_pct, iopv_prem_pct):
     alerts = basket.get('alerts', [])
@@ -355,12 +310,10 @@ def check_alerts(basket, futures_prem_pct, iopv_prem_pct):
                 f"触发 {op} {th:+.2f}%，当前值: {val:+.4f}%")
     return triggered
 
-
 # ==========================================
 # 样式辅助
 # ==========================================
 def colored_pct(value, fmt="+.4f"):
-    """返回带颜色的百分比 HTML"""
     pct = value * 100
     if value > 0.001:
         color = "#FF5252"
@@ -370,7 +323,6 @@ def colored_pct(value, fmt="+.4f"):
         color = "#FFC107"
     return f'<span style="color:{color};font-weight:bold;font-size:1.4em">{pct:{fmt}}%</span>'
 
-
 def metric_card(label, value_html):
     return f"""
     <div style="text-align:center;padding:6px 12px">
@@ -378,12 +330,10 @@ def metric_card(label, value_html):
         <div>{value_html}</div>
     </div>"""
 
-
 # ==========================================
 # 主界面
 # ==========================================
 def main():
-    # 初始化 session state
     if 'config' not in st.session_state:
         st.session_state.config = load_config()
     if 'auto_refresh' not in st.session_state:
@@ -392,23 +342,16 @@ def main():
     cfg = st.session_state.config
     baskets = cfg.get('baskets', [])
 
-    # ---- 标题栏 ----
-    st.markdown(
-        '<h2 style="text-align:center;margin-bottom:0">🐼 商品期货ETF套利监测系统（BBS手作）</h2>',
-        unsafe_allow_html=True)
+    st.markdown('<h2 style="text-align:center;margin-bottom:0">🐼 商品期货ETF套利监测系统（BBS手作）</h2>', unsafe_allow_html=True)
 
-    # ---- 控制栏 ----
     ctrl_cols = st.columns([1, 1, 2, 1])
     with ctrl_cols[0]:
-        interval = st.number_input(
-            "刷新间隔(秒)", min_value=5, max_value=300,
-            value=cfg.get('refresh_interval', 10), step=1, key="interval_input")
+        interval = st.number_input("刷新间隔(秒)", min_value=5, max_value=300, value=cfg.get('refresh_interval', 10), step=1, key="interval_input")
     with ctrl_cols[1]:
         auto = st.toggle("自动刷新", value=st.session_state.auto_refresh, key="auto_toggle")
         st.session_state.auto_refresh = auto
     with ctrl_cols[2]:
-        st.markdown(f"<br><small style='color:#888'>最后更新: {datetime.now().strftime('%H:%M:%S')}</small>",
-                    unsafe_allow_html=True)
+        st.markdown(f"<br><small style='color:#888'>最后更新: {datetime.now().strftime('%H:%M:%S')}</small>", unsafe_allow_html=True)
     with ctrl_cols[3]:
         st.markdown("<br>", unsafe_allow_html=True)
         manual_refresh = st.button("🔄 手动刷新", width='stretch')
@@ -418,13 +361,10 @@ def main():
     if err_msg:
         st.warning(f"数据异常: {err_msg}")
 
-    # ---- 保存配置（净值可能更新）----
-    save_config(cfg)
+    # 注意：这里删除了之前无条件调用的 save_config(cfg)，防止触发死循环
 
-    # ---- 提醒收集 ----
     all_triggered = []
 
-    # ---- Tab 页 ----
     if not baskets:
         st.info("暂无套利篮子，请在侧边栏配置。")
     else:
@@ -448,7 +388,6 @@ def main():
                 nav_data = r.get('nav_data')
                 nav_date = nav_data.get('nav_date', '') if nav_data else ''
 
-                # ---- 信息卡片 ----
                 etf_price = etf_data['price'] if etf_data else 0
                 iopv_src = "腾讯IOPV" if iopv_val > 0 else "IOPV未获取"
 
@@ -462,20 +401,14 @@ def main():
                             昨日净值: {nav:.4f} ({nav_date}) &nbsp; 数据源: {iopv_src}</span>
                     </div>
                     <div style="display:flex;gap:24px;flex-wrap:wrap">
-                        {metric_card("ETF 现价",
-                            f'<span style="color:#fff;font-weight:bold;font-size:1.4em">{etf_price:.4f}</span>')}
-                        {metric_card("IOPV 参考净值",
-                            f'<span style="color:#80DEEA;font-weight:bold;font-size:1.4em">{iopv_val:.4f}</span>'
-                            if iopv_val > 0 else '<span style="color:#666">--</span>')}
-                        {metric_card("期货估算净值",
-                            f'<span style="color:#90CAF9;font-weight:bold;font-size:1.4em">{est_nav:.4f}</span>'
-                            if est_nav > 0 else '<span style="color:#666">--</span>')}
+                        {metric_card("ETF 现价", f'<span style="color:#fff;font-weight:bold;font-size:1.4em">{etf_price:.4f}</span>')}
+                        {metric_card("IOPV 参考净值", f'<span style="color:#80DEEA;font-weight:bold;font-size:1.4em">{iopv_val:.4f}</span>' if iopv_val > 0 else '<span style="color:#666">--</span>')}
+                        {metric_card("期货估算净值", f'<span style="color:#90CAF9;font-weight:bold;font-size:1.4em">{est_nav:.4f}</span>' if est_nav > 0 else '<span style="color:#666">--</span>')}
                         {metric_card("IOPV 溢价", colored_pct(iopv_prem))}
                         {metric_card("期货估算溢价", colored_pct(overall))}
                     </div>
                 </div>""", unsafe_allow_html=True)
 
-                # ---- 合约明细表 ----
                 contracts = calc.get('contracts', [])
                 if contracts:
                     rows = []
@@ -483,9 +416,7 @@ def main():
                         cdb = COMMODITY_DB.get(c['code'], {})
                         name = f"{cdb.get('name', c['code'])}{c['month']}"
                         rows.append({
-                            '合约': name,
-                            '数量': c['qty'],
-                            '单位': c['unit'],
+                            '合约': name, '数量': c['qty'], '单位': c['unit'],
                             '现价': f"{c['current_price']:.1f}" if c['current_price'] > 0 else "--",
                             '昨结算': f"{c['ref_price']:.1f}" if c['ref_price'] > 0 else "--",
                             '溢价%': f"{c.get('premium',0)*100:+.4f}",
@@ -496,7 +427,6 @@ def main():
                     df = pd.DataFrame(rows)
                     st.dataframe(df, width='stretch', hide_index=True)
 
-                # ---- 汇总行 ----
                 tv = calc.get('total_value', 0)
                 tv095 = calc.get('total_value_div095', 0)
                 wp = calc.get('weighted_premium', 0)
@@ -505,13 +435,9 @@ def main():
                 sum_cols[1].markdown(f"**÷0.95:** {tv095:,.0f}")
                 sum_cols[2].markdown(f"**期货加权变动:** {wp*100:+.4f}%")
 
-                # ---- 提醒规则 ----
                 st.markdown("---")
                 st.markdown("##### 溢价提醒规则")
-
                 alerts = basket.setdefault('alerts', [])
-
-                # 显示现有规则
                 if alerts:
                     for ai, a in enumerate(alerts):
                         a_cols = st.columns([3, 2, 2, 1, 1, 1])
@@ -532,19 +458,11 @@ def main():
                 else:
                     st.caption("暂无提醒规则")
 
-                # 添加新规则
                 with st.expander("➕ 添加新提醒规则"):
                     new_cols = st.columns(4)
-                    new_metric = new_cols[0].selectbox(
-                        "监控指标", ["期货估算溢价率", "IOPV溢价率"],
-                        key=f"new_metric_{idx}")
-                    new_op = new_cols[1].selectbox(
-                        "条件", [">=（大于等于）", "<=（小于等于）"],
-                        key=f"new_op_{idx}")
-                    new_th = new_cols[2].number_input(
-                        "阈值(%)", min_value=-50.0, max_value=50.0,
-                        value=1.0, step=0.1, format="%.2f",
-                        key=f"new_th_{idx}")
+                    new_metric = new_cols[0].selectbox("监控指标", ["期货估算溢价率", "IOPV溢价率"], key=f"new_metric_{idx}")
+                    new_op = new_cols[1].selectbox("条件", [">=（大于等于）", "<=（小于等于）"], key=f"new_op_{idx}")
+                    new_th = new_cols[2].number_input("阈值(%)", min_value=-50.0, max_value=50.0, value=1.0, step=0.1, format="%.2f", key=f"new_th_{idx}")
                     new_cols[3].markdown("<br>", unsafe_allow_html=True)
                     if new_cols[3].button("确认添加", key=f"add_alert_{idx}"):
                         alerts.append({
@@ -556,35 +474,25 @@ def main():
                         save_config(cfg)
                         st.rerun()
 
-                # ---- 提醒检测 ----
                 futures_prem_pct = overall * 100
                 iopv_prem_pct = iopv_prem * 100
                 triggered = check_alerts(basket, futures_prem_pct, iopv_prem_pct)
                 all_triggered.extend(triggered)
 
-    # ---- 弹出提醒 ----
     if all_triggered:
         for msg in all_triggered:
             st.toast(f"⚠️ {msg}", icon="🚨")
         st.warning("⚠️ **溢价提醒触发！**\n\n" + "\n\n".join(all_triggered))
 
-    # ---- 侧边栏配置 ----
     with st.sidebar:
         st.header("篮子配置")
-
         for idx, basket in enumerate(baskets):
             with st.expander(f"📦 {basket['name']}", expanded=False):
-                basket['name'] = st.text_input(
-                    "篮子名称", value=basket['name'], key=f"bname_{idx}")
-                basket['etf_code'] = st.text_input(
-                    "ETF代码", value=basket['etf_code'], key=f"betf_{idx}")
-                basket['fund_code'] = st.text_input(
-                    "基金代码", value=basket['fund_code'], key=f"bfund_{idx}")
-                basket['etf_name'] = st.text_input(
-                    "ETF名称", value=basket.get('etf_name', ''), key=f"betfn_{idx}")
-                nav_val = st.number_input(
-                    "昨日净值", value=float(basket.get('etf_nav', 0)),
-                    format="%.4f", step=0.0001, key=f"bnav_{idx}")
+                basket['name'] = st.text_input("篮子名称", value=basket['name'], key=f"bname_{idx}")
+                basket['etf_code'] = st.text_input("ETF代码", value=basket['etf_code'], key=f"betf_{idx}")
+                basket['fund_code'] = st.text_input("基金代码", value=basket['fund_code'], key=f"bfund_{idx}")
+                basket['etf_name'] = st.text_input("ETF名称", value=basket.get('etf_name', ''), key=f"betfn_{idx}")
+                nav_val = st.number_input("昨日净值", value=float(basket.get('etf_nav', 0)), format="%.4f", step=0.0001, key=f"bnav_{idx}")
                 basket['etf_nav'] = nav_val
 
                 st.markdown("**合约列表:**")
@@ -606,12 +514,7 @@ def main():
                 if add_c[2].button("添加合约", key=f"ac_{idx}"):
                     if new_code and new_month:
                         db_info = COMMODITY_DB.get(new_code.upper(), {})
-                        basket['contracts'].append({
-                            'code': new_code.upper(),
-                            'month': new_month,
-                            'qty': 1,
-                            'unit': db_info.get('unit', 1),
-                        })
+                        basket['contracts'].append({'code': new_code.upper(), 'month': new_month, 'qty': 1, 'unit': db_info.get('unit', 1)})
                         save_config(cfg)
                         st.rerun()
 
@@ -622,10 +525,7 @@ def main():
 
         st.markdown("---")
         if st.button("➕ 新建篮子"):
-            baskets.append({
-                'name': '新篮子', 'etf_code': 'sz', 'etf_name': '',
-                'fund_code': '', 'etf_nav': 0, 'contracts': [], 'alerts': [],
-            })
+            baskets.append({'name': '新篮子', 'etf_code': 'sz', 'etf_name': '', 'fund_code': '', 'etf_nav': 0, 'contracts': [], 'alerts': []})
             save_config(cfg)
             st.rerun()
 
@@ -633,11 +533,9 @@ def main():
             save_config(cfg)
             st.success("配置已保存！")
 
-    # ---- 自动刷新 ----
     if st.session_state.auto_refresh:
         time.sleep(interval)
         st.rerun()
-
 
 if __name__ == "__main__":
     main()
